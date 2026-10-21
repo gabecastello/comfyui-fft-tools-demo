@@ -323,23 +323,143 @@ class SpectralGuidanceEQNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": ("MODEL",),
-                "cfg_scale": ("FLOAT", {"default": 4.5, "min": 0.0, "max": 30.0, "step": 0.1}),
-                "low_freq_gain": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05}),
-                "mid_freq_gain": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05}),
-                "high_freq_gain": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05}),
+                "model": (
+                    "MODEL", 
+                    {"tooltip": "Diffusion or DiT model to patch with frequency-equalized latent guidance."}
+                ),
+                "cfg_scale": (
+                    "FLOAT", 
+                    {
+                        "default": 4.5, 
+                        "min": 0.0, 
+                        "max": 30.0, 
+                        "step": 0.1,
+                        "tooltip": "Master Guidance Scale (CFG equivalent). Controls primary prompt adherence before band equalization."
+                    }
+                ),
+                "low_freq_gain": (
+                    "FLOAT", 
+                    {
+                        "default": 1.0, 
+                        "min": 0.0, 
+                        "max": 4.0, 
+                        "step": 0.05,
+                        "tooltip": "[Macro Band] Multiplier for global composition, lighting contrast, deep shadows, and overall color palette. Reduce to eliminate oversaturation and burn."
+                    }
+                ),
+                "mid_freq_gain": (
+                    "FLOAT", 
+                    {
+                        "default": 1.0, 
+                        "min": 0.0, 
+                        "max": 4.0, 
+                        "step": 0.05,
+                        "tooltip": "[Anatomy Band] Multiplier for subject silhouettes, structural geometry, anatomy, and major object contours."
+                    }
+                ),
+                "high_freq_gain": (
+                    "FLOAT", 
+                    {
+                        "default": 1.0, 
+                        "min": 0.0, 
+                        "max": 4.0, 
+                        "step": 0.05,
+                        "tooltip": "[Micro Band] Multiplier for surface textures, skin pores, fabric weave, and crisp edge definition without altering composition or lighting."
+                    }
+                ),
             },
             "optional": {
-                "crossover_low": ("FLOAT", {"default": 0.12, "min": 0.02, "max": 0.35, "step": 0.01}),
-                "crossover_high": ("FLOAT", {"default": 0.45, "min": 0.20, "max": 0.85, "step": 0.01}),
-                "spectral_tilt": ("FLOAT", {"default": 0.0, "min": -1.5, "max": 1.5, "step": 0.05}),
-                "high_shelf_damping": ("FLOAT", {"default": 0.15, "min": 0.0, "max": 1.0, "step": 0.05}),
-                "rescale_factor": ("FLOAT", {"default": 0.70, "min": 0.0, "max": 1.0, "step": 0.05}),
-                "rescale_mode": (["std", "norm"], {"default": "std"}),
-                "schedule_mode": (["linear", "logarithmic"], {"default": "linear"}),
-                "start_percent": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 1.0, "step": 0.05}),
-                "end_percent": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05}),
-                "debug_logging": ("BOOLEAN", {"default": False}),
+                "crossover_low": (
+                    "FLOAT", 
+                    {
+                        "default": 0.12, 
+                        "min": 0.02, 
+                        "max": 0.35, 
+                        "step": 0.01,
+                        "tooltip": "Normalized radial frequency cutoff (0.0 to 1.0) separating Low (Macro) and Mid (Anatomy) frequency bands."
+                    }
+                ),
+                "crossover_high": (
+                    "FLOAT", 
+                    {
+                        "default": 0.45, 
+                        "min": 0.20, 
+                        "max": 0.85, 
+                        "step": 0.01,
+                        "tooltip": "Normalized radial frequency cutoff (0.0 to 1.0) separating Mid (Anatomy) and High (Micro-Texture) frequency bands."
+                    }
+                ),
+                "spectral_tilt": (
+                    "FLOAT", 
+                    {
+                        "default": 0.0, 
+                        "min": -1.5, 
+                        "max": 1.5, 
+                        "step": 0.05,
+                        "tooltip": "Power-law slope tilt (1/f^alpha). Positive values boost high-frequency crispness; negative values yield warm, filmic softness."
+                    }
+                ),
+                "high_shelf_damping": (
+                    "FLOAT", 
+                    {
+                        "default": 0.15, 
+                        "min": 0.0, 
+                        "max": 1.0, 
+                        "step": 0.05,
+                        "tooltip": "Nyquist de-esser / high-cut filter. Damps extreme boundary frequencies (r > 0.82) to prevent digital checkerboard and salt-and-pepper artifacts."
+                    }
+                ),
+                "rescale_factor": (
+                    "FLOAT", 
+                    {
+                        "default": 0.70, 
+                        "min": 0.0, 
+                        "max": 1.0, 
+                        "step": 0.05,
+                        "tooltip": "Automatic Gain Control (AGC) ratio. Blends guided latent back toward target energy (0.0 = off, 0.70 = balanced, 1.0 = strict natural variance matching)."
+                    }
+                ),
+                "rescale_mode": (
+                    ["std", "norm"], 
+                    {
+                        "default": "std",
+                        "tooltip": "Energy metric for AGC: 'std' preserves DC luminance while clamping contrast variance; 'norm' clamps Euclidean L2 vector length."
+                    }
+                ),
+                "schedule_mode": (
+                    ["linear", "logarithmic"], 
+                    {
+                        "default": "linear",
+                        "tooltip": "Timestep progress calculation: 'linear' for Flow-Matching DiTs (FLUX, Wan 2.1, SD3.5); 'logarithmic' for continuous sigma schedulers (SDXL, SD1.5)."
+                    }
+                ),
+                "start_percent": (
+                    "FLOAT", 
+                    {
+                        "default": 0.0, 
+                        "min": 0.0, 
+                        "max": 1.0, 
+                        "step": 0.05,
+                        "tooltip": "Sampling step fraction (0.0 to 1.0) when spectral filtering activates."
+                    }
+                ),
+                "end_percent": (
+                    "FLOAT", 
+                    {
+                        "default": 1.0, 
+                        "min": 0.0, 
+                        "max": 1.0, 
+                        "step": 0.05,
+                        "tooltip": "Sampling step fraction (0.0 to 1.0) when spectral filtering turns off (e.g. 0.70-0.80 lets final details settle naturally without edge ringing)."
+                    }
+                ),
+                "debug_logging": (
+                    "BOOLEAN", 
+                    {
+                        "default": False,
+                        "tooltip": "Print detailed step progression, sigma values, and frequency calculations to the system console."
+                    }
+                ),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
@@ -410,15 +530,39 @@ class SpectralSpectrumVisualizerNode:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": ("MODEL",),
+                "model": (
+                    "MODEL", 
+                    {"tooltip": "Diffusion or DiT model to monitor with a non-destructive frequency oscilloscope tap."}
+                ),
                 "target_signal": (
                     ["guidance_delta (cond - uncond)", "conditioned (cond)", "unconditioned (uncond)"],
-                    {"default": "guidance_delta (cond - uncond)"}
+                    {
+                        "default": "guidance_delta (cond - uncond)",
+                        "tooltip": "Signal stream to measure: 'guidance_delta' tracks the prompt vector; 'conditioned' inspects prompt latent; 'unconditioned' inspects negative/null latent."
+                    }
                 ),
             },
             "optional": {
-                "crossover_low": ("FLOAT", {"default": 0.12, "min": 0.02, "max": 0.35, "step": 0.01}),
-                "crossover_high": ("FLOAT", {"default": 0.45, "min": 0.20, "max": 0.85, "step": 0.01}),
+                "crossover_low": (
+                    "FLOAT", 
+                    {
+                        "default": 0.12, 
+                        "min": 0.02, 
+                        "max": 0.35, 
+                        "step": 0.01,
+                        "tooltip": "Low-to-Mid crossover marker (0.0 to 1.0) rendered on the live 1D PSD spectrum graph and 2D FFT heatmap."
+                    }
+                ),
+                "crossover_high": (
+                    "FLOAT", 
+                    {
+                        "default": 0.45, 
+                        "min": 0.20, 
+                        "max": 0.85, 
+                        "step": 0.01,
+                        "tooltip": "Mid-to-High crossover marker (0.0 to 1.0) rendered on the live 1D PSD spectrum graph and 2D FFT heatmap."
+                    }
+                ),
             },
             "hidden": {
                 "unique_id": "UNIQUE_ID",
